@@ -1,103 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Roleta com Dono</title>
+<style>
+body { background:#111; color:#eee; font-family:Arial; text-align:center }
+.box { background:#1e1e1e; padding:20px; margin:20px auto; width:300px; border-radius:10px }
+input, select, button { width:90%; padding:10px; margin:5px }
+button { cursor:pointer }
+</style>
+</head>
+<body>
+
+<div class="box" id="login">
+  <h2>Login</h2>
+  <input id="nome" placeholder="Nome">
+  <input id="senha" type="password" placeholder="Senha">
+  <select id="tipo">
+    <option value="user">Usuário</option>
+    <option value="admin">Dono</option>
+  </select>
+  <button onclick="entrar()">Entrar</button>
+</div>
+
+<div class="box" id="usuario" style="display:none">
+  <h2>Usuário</h2>
+  <button onclick="pedir()">Pedir acesso</button>
+  <button onclick="rolar()" id="btnRolar" disabled>🎲 Rolar</button>
+  <p id="res"></p>
+</div>
+
+<div class="box" id="dono" style="display:none">
+  <h2>Dono</h2>
+  <h3>Pedidos</h3>
+  <div id="pedidos"></div>
+  <h3>Resultados</h3>
+  <div id="historico"></div>
+</div>
+
 <script>
-const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "SEU_DOMINIO",
-  projectId: "SEU_PROJECT_ID",
-};
+let usuarioAtual = "";
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+function entrar(){
+  const nome = document.getElementById("nome").value;
+  const senha = document.getElementById("senha").value;
+  const tipo = document.getElementById("tipo").value;
 
-let userName = "";
-let isAdmin = false;
+  if(!nome || !senha) return alert("Preencha tudo");
+  if(senha !== "RC1") return alert("Senha errada");
 
-function login(){
-  const user = document.getElementById("name").value.trim();
-  const pass = document.getElementById("password").value.trim();
-  const role = document.getElementById("role").value;
+  usuarioAtual = nome;
+  login.style.display = "none";
 
-  if(!user || !pass){
-    alert("Preencha tudo");
-    return;
-  }
-
-  if(pass !== "RC1"){
-    alert("Senha incorreta");
-    return;
-  }
-
-  userName = user;
-  loginBox.style.display = "none";
-
-  if(role === "admin"){
-    isAdmin = true;
-    adminBox.style.display = "block";
-    loadRequests();
-    loadResults();
+  if(tipo === "admin"){
+    dono.style.display = "block";
+    carregarPedidos();
+    carregarResultados();
   } else {
-    userBox.style.display = "block";
-    checkApproval();
+    usuario.style.display = "block";
+    verificarAprovacao();
   }
 }
 
-function requestRoll(){
-  db.collection("requests").doc(userName).set({
-    approved:false
-  });
+function pedir(){
+  let pedidos = JSON.parse(localStorage.getItem("pedidos")) || {};
+  pedidos[usuarioAtual] = false;
+  localStorage.setItem("pedidos", JSON.stringify(pedidos));
   alert("Pedido enviado ao dono");
 }
 
-function loadRequests(){
-  db.collection("requests").onSnapshot(snap=>{
-    requests.innerHTML="";
-    snap.forEach(doc=>{
-      const d = doc.data();
-      if(!d.approved){
-        requests.innerHTML += `
-          <p>${doc.id}
-          <button onclick="approve('${doc.id}')">Aceitar</button>
-          <button onclick="reject('${doc.id}')">Recusar</button></p>
+function carregarPedidos(){
+  setInterval(() => {
+    let pedidos = JSON.parse(localStorage.getItem("pedidos")) || {};
+    pedidosDiv = "";
+    for(let nome in pedidos){
+      if(pedidos[nome] === false){
+        pedidosDiv += `
+          <p>${nome}
+          <button onclick="aprovar('${nome}')">Aceitar</button>
+          <button onclick="recusar('${nome}')">Recusar</button></p>
         `;
       }
-    });
-  });
+    }
+    pedidos.innerHTML = pedidosDiv;
+  }, 1000);
 }
 
-function approve(name){
-  db.collection("requests").doc(name).update({approved:true});
+function aprovar(nome){
+  let pedidos = JSON.parse(localStorage.getItem("pedidos"));
+  pedidos[nome] = true;
+  localStorage.setItem("pedidos", JSON.stringify(pedidos));
 }
 
-function reject(name){
-  db.collection("requests").doc(name).delete();
+function recusar(nome){
+  let pedidos = JSON.parse(localStorage.getItem("pedidos"));
+  delete pedidos[nome];
+  localStorage.setItem("pedidos", JSON.stringify(pedidos));
 }
 
-function checkApproval(){
-  db.collection("requests").doc(userName)
-    .onSnapshot(doc=>{
-      if(doc.exists && doc.data().approved){
-        document.getElementById("rollBtn").disabled=false;
-      }
-    });
+function verificarAprovacao(){
+  setInterval(() => {
+    let pedidos = JSON.parse(localStorage.getItem("pedidos")) || {};
+    if(pedidos[usuarioAtual] === true){
+      btnRolar.disabled = false;
+    }
+  }, 1000);
 }
 
-function roll(){
-  const num = Math.floor(Math.random()*10)+1;
-  document.getElementById("result").innerText = "Você tirou: " + num;
+function rolar(){
+  const n = Math.floor(Math.random()*10)+1;
+  res.innerText = "Você tirou: " + n;
 
-  db.collection("results").add({
-    name:userName,
-    number:num,
-    time: new Date()
-  });
+  let hist = JSON.parse(localStorage.getItem("resultados")) || [];
+  hist.push({nome:usuarioAtual, numero:n});
+  localStorage.setItem("resultados", JSON.stringify(hist));
 }
 
-function loadResults(){
-  db.collection("results").onSnapshot(snap=>{
-    results.innerHTML="";
-    snap.forEach(doc=>{
-      const d = doc.data();
-      results.innerHTML += `<p>${d.name} tirou ${d.number}</p>`;
-    });
-  });
+function carregarResultados(){
+  setInterval(() => {
+    let hist = JSON.parse(localStorage.getItem("resultados")) || [];
+    historico.innerHTML = hist.map(h=>`${h.nome} tirou ${h.numero}`).join("<br>");
+  }, 1000);
 }
 </script>
+
+</body>
+</html>
