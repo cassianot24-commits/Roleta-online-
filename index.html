@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>🎯 Roleta Online</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background:#0f0f0f;
+  color:#eee;
+  text-align:center;
+}
+.box {
+  background:#1e1e1e;
+  padding:20px;
+  margin:20px auto;
+  width:320px;
+  border-radius:10px;
+}
+input, select, button {
+  padding:10px;
+  margin:5px;
+  width:90%;
+}
+button { cursor:pointer; }
+li {
+  background:#2a2a2a;
+  margin:5px;
+  padding:8px;
+  border-radius:5px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎯 Roleta Online</h1>
+
+<!-- LOGIN -->
+<div class="box" id="loginBox">
+  <h2>Login</h2>
+  <input id="name" placeholder="Nome">
+  <select id="role">
+    <option value="USUARIO">Usuário</option>
+    <option value="DONO">Dono</option>
+  </select>
+  <input id="password" type="password" placeholder="Senha">
+  <button onclick="login()">Entrar</button>
+</div>
+
+<!-- USUÁRIO -->
+<div class="box" id="userPanel" style="display:none">
+  <h2>Painel do Usuário</h2>
+  <p id="status">Sem permissão</p>
+  <button id="requestBtn" onclick="requestRoll()">Pedir permissão</button>
+  <button id="rollBtn" onclick="roll()" disabled>🎲 Girar Roleta</button>
+  <p id="result"></p>
+</div>
+
+<!-- DONO -->
+<div class="box" id="adminPanel" style="display:none">
+  <h2>Painel do DONO</h2>
+  <ul id="requests"></ul>
+</div>
+
+<script>
+// 🔥 CONFIGURE SEU FIREBASE
+const firebaseConfig = {
+  apiKey: "SUA_API_KEY",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  projectId: "SEU_PROJETO"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ESTADO
+let currentUser = "";
+let isAdmin = false;
+let myRequestId = null;
+
+// LOGIN
+function login(){
+  const name = document.getElementById('name').value.trim();
+  const role = document.getElementById('role').value;
+  const password = document.getElementById('password').value;
+
+  if(!name) return alert("Digite um nome");
+
+  if(role === "DONO" && password === "RC1"){
+    isAdmin = true;
+    currentUser = name;
+    document.getElementById('loginBox').style.display="none";
+    document.getElementById('adminPanel').style.display="block";
+    listenRequests();
+  }
+  else if(role === "USUARIO" && password === "RC"){
+    currentUser = name;
+    document.getElementById('loginBox').style.display="none";
+    document.getElementById('userPanel').style.display="block";
+    checkExistingRequest();
+  }
+  else {
+    alert("Credenciais inválidas");
+  }
+}
+
+// USUÁRIO — VER SE JÁ TEM PEDIDO
+function checkExistingRequest(){
+  db.collection("requests")
+    .where("user","==",currentUser)
+    .where("status","==","aguardando")
+    .get()
+    .then(snapshot=>{
+      if(!snapshot.empty){
+        const doc = snapshot.docs[0];
+        myRequestId = doc.id;
+        document.getElementById("status").innerText="Aguardando aprovação";
+        document.getElementById("requestBtn").disabled=true;
+        listenMyRequest(doc.id);
+      }
+    });
+}
+
+// PEDIR PERMISSÃO
+function requestRoll(){
+  db.collection("requests").add({
+    user: currentUser,
+    status: "aguardando",
+    created: Date.now()
+  }).then(doc=>{
+    myRequestId = doc.id;
+    document.getElementById("status").innerText="Aguardando aprovação";
+    document.getElementById("requestBtn").disabled=true;
+    listenMyRequest(doc.id);
+  });
+}
+
+// ESCUTAR MINHA PERMISSÃO
+function listenMyRequest(id){
+  db.collection("requests").doc(id)
+    .onSnapshot(doc=>{
+      if(!doc.exists) return;
+      const data = doc.data();
+
+      if(data.status==="aprovado"){
+        document.getElementById("status").innerText="Permissão concedida";
+        document.getElementById("rollBtn").disabled=false;
+      }
+
+      if(data.status==="recusado"){
+        document.getElementById("status").innerText="Permissão recusada";
+      }
+    });
+}
+
+// DONO — VER PEDIDOS
+function listenRequests(){
+  db.collection("requests")
+    .where("status","==","aguardando")
+    .onSnapshot(snapshot=>{
+      const ul = document.getElementById("requests");
+      ul.innerHTML="";
+      snapshot.forEach(doc=>{
+        const d = doc.data();
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <strong>${d.user}</strong><br>
+          <button onclick="approve('${doc.id}')">Aceitar</button>
+          <button onclick="deny('${doc.id}')">Recusar</button>
+        `;
+        ul.appendChild(li);
+      });
+    });
+}
+
+// APROVAR / NEGAR
+function approve(id){
+  db.collection("requests").doc(id).update({status:"aprovado"});
+}
+
+function deny(id){
+  db.collection("requests").doc(id).update({status:"recusado"});
+}
+
+// ROLETA
+function roll(){
+  const value = Math.floor(Math.random()*10)+1;
+  document.getElementById("result").innerText="🎉 Você tirou: "+value;
+
+  db.collection("logs").add({
+    user: currentUser,
+    result: value,
+    time: Date.now()
+  });
+
+  document.getElementById("rollBtn").disabled=true;
+}
+</script>
+
+</body>
+</html>
