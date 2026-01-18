@@ -2,31 +2,53 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Roleta com Aprovação</title>
+<title>Roleta Online</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 <style>
-body { background:#111; color:#eee; font-family:Arial; text-align:center }
-.box { background:#1e1e1e; padding:20px; margin:20px auto; width:300px; border-radius:10px }
+body { background:#111; color:#fff; font-family:Arial; text-align:center }
+.box { background:#1e1e1e; padding:20px; margin:20px auto; width:320px; border-radius:10px }
 input, select, button { width:90%; padding:10px; margin:5px }
 button { cursor:pointer }
+
+.roleta {
+  width:200px; height:200px;
+  border-radius:50%;
+  border:10px solid #444;
+  margin:20px auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:40px;
+  transition: transform 3s ease-out;
+  background:conic-gradient(
+    red, orange, yellow, green, cyan,
+    blue, purple, pink, lime, gold
+  );
+}
 </style>
 </head>
+
 <body>
 
 <div class="box" id="loginBox">
   <h2>Login</h2>
-  <input id="inpNome" placeholder="Nome">
-  <input id="inpSenha" type="password" placeholder="Senha">
-  <select id="inpTipo">
+  <input id="nome" placeholder="Nome">
+  <input id="senha" type="password" placeholder="Senha">
+  <select id="tipo">
     <option value="user">Usuário</option>
     <option value="admin">Dono</option>
   </select>
-  <button onclick="entrar()">Entrar</button>
+  <button onclick="login()">Entrar</button>
 </div>
 
 <div class="box" id="userBox" style="display:none">
   <h2>Usuário</h2>
   <button onclick="pedirAcesso()">Pedir acesso</button>
-  <button id="btnRolar" onclick="rolar()" disabled>🎲 Rolar</button>
+  <div class="roleta" id="roleta">🎡</div>
+  <button id="btnRolar" onclick="rolar()" disabled>Girar Roleta</button>
   <p id="resultado"></p>
 </div>
 
@@ -34,101 +56,115 @@ button { cursor:pointer }
   <h2>Dono</h2>
 
   <h3>Pedidos</h3>
-  <div id="listaPedidos"></div>
+  <div id="pedidos"></div>
 
   <h3>Resultados</h3>
-  <div id="listaResultados"></div>
+  <div id="resultados"></div>
 </div>
 
 <script>
-let usuarioAtual = "";
+// 🔥 FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "SUA_API_KEY",
+  authDomain: "SEU_DOMINIO",
+  projectId: "SEU_PROJECT_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let usuario = "";
+let rotacao = 0;
 
 /* LOGIN */
-function entrar(){
-  const nome = inpNome.value.trim();
-  const senha = inpSenha.value.trim();
-  const tipo = inpTipo.value;
+function login(){
+  const n = nome.value.trim();
+  const s = senha.value.trim();
+  const t = tipo.value;
 
-  if(!nome || !senha) return alert("Preencha tudo");
-  if(senha !== "RC1") return alert("Senha incorreta");
+  if(!n || !s) return alert("Preencha tudo");
+  if(s !== "RC1") return alert("Senha errada");
 
-  usuarioAtual = nome;
+  usuario = n;
   loginBox.style.display = "none";
 
-  if(tipo === "admin"){
+  if(t === "admin"){
     adminBox.style.display = "block";
-    atualizarPedidos();
-    atualizarResultados();
+    ouvirPedidos();
+    ouvirResultados();
   } else {
     userBox.style.display = "block";
-    verificarPermissao();
+    verificarAprovacao();
   }
 }
 
 /* USUÁRIO */
 function pedirAcesso(){
-  let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB")) || {};
-  pedidosDB[usuarioAtual] = false;
-  localStorage.setItem("pedidosDB", JSON.stringify(pedidosDB));
+  db.collection("pedidos").doc(usuario).set({
+    aprovado:false
+  });
   alert("Pedido enviado ao dono");
 }
 
-function verificarPermissao(){
-  setInterval(() => {
-    let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB")) || {};
-    if(pedidosDB[usuarioAtual] === true){
-      btnRolar.disabled = false;
-    }
-  }, 500);
+function verificarAprovacao(){
+  db.collection("pedidos").doc(usuario)
+    .onSnapshot(doc=>{
+      if(doc.exists && doc.data().aprovado){
+        btnRolar.disabled = false;
+      }
+    });
 }
 
 function rolar(){
-  const n = Math.floor(Math.random()*10)+1;
-  resultado.innerText = "Você tirou: " + n;
+  const num = Math.floor(Math.random()*10)+1;
+  rotacao += 720 + num * 36;
+  roleta.style.transform = `rotate(${rotacao}deg)`;
 
-  let resultadosDB = JSON.parse(localStorage.getItem("resultadosDB")) || [];
-  resultadosDB.push({nome:usuarioAtual, numero:n});
-  localStorage.setItem("resultadosDB", JSON.stringify(resultadosDB));
+  setTimeout(()=>{
+    resultado.innerText = "Você tirou: " + num;
+    db.collection("resultados").add({
+      nome:usuario,
+      numero:num,
+      data:new Date()
+    });
+  }, 3000);
 }
 
 /* DONO */
-function atualizarPedidos(){
-  setInterval(() => {
-    let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB")) || {};
-    let html = "";
-
-    for(let nome in pedidosDB){
-      if(pedidosDB[nome] === false){
-        html += `
-          <p>${nome}
-          <button onclick="aprovar('${nome}')">Aceitar</button>
-          <button onclick="recusar('${nome}')">Recusar</button>
+function ouvirPedidos(){
+  db.collection("pedidos").onSnapshot(snap=>{
+    pedidos.innerHTML="";
+    snap.forEach(doc=>{
+      const d = doc.data();
+      if(!d.aprovado){
+        pedidos.innerHTML += `
+          <p>${doc.id}
+          <button onclick="aprovar('${doc.id}')">Aceitar</button>
+          <button onclick="recusar('${doc.id}')">Recusar</button>
           </p>`;
       }
-    }
-
-    document.getElementById("listaPedidos").innerHTML = html || "<i>Nenhum pedido</i>";
-  }, 500);
+    });
+  });
 }
 
 function aprovar(nome){
-  let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB"));
-  pedidosDB[nome] = true;
-  localStorage.setItem("pedidosDB", JSON.stringify(pedidosDB));
+  db.collection("pedidos").doc(nome).update({aprovado:true});
 }
 
 function recusar(nome){
-  let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB"));
-  delete pedidosDB[nome];
-  localStorage.setItem("pedidosDB", JSON.stringify(pedidosDB));
+  db.collection("pedidos").doc(nome).delete();
 }
 
-function atualizarResultados(){
-  setInterval(() => {
-    let resultadosDB = JSON.parse(localStorage.getItem("resultadosDB")) || [];
-    let html = resultadosDB.map(r => `${r.nome} tirou ${r.numero}`).join("<br>");
-    document.getElementById("listaResultados").innerHTML = html || "<i>Sem resultados</i>";
-  }, 500);
+function ouvirResultados(){
+  db.collection("resultados")
+    .orderBy("data","desc")
+    .onSnapshot(snap=>{
+      resultados.innerHTML="";
+      snap.forEach(doc=>{
+        const r = doc.data();
+        resultados.innerHTML += `<p>${r.nome} tirou ${r.numero}</p>`;
+      });
+    });
 }
 </script>
 
