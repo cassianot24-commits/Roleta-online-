@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Roleta com Dono</title>
+<title>Roleta com Aprovação</title>
 <style>
 body { background:#111; color:#eee; font-family:Arial; text-align:center }
 .box { background:#1e1e1e; padding:20px; margin:20px auto; width:300px; border-radius:10px }
@@ -12,115 +12,123 @@ button { cursor:pointer }
 </head>
 <body>
 
-<div class="box" id="login">
+<div class="box" id="loginBox">
   <h2>Login</h2>
-  <input id="nome" placeholder="Nome">
-  <input id="senha" type="password" placeholder="Senha">
-  <select id="tipo">
+  <input id="inpNome" placeholder="Nome">
+  <input id="inpSenha" type="password" placeholder="Senha">
+  <select id="inpTipo">
     <option value="user">Usuário</option>
     <option value="admin">Dono</option>
   </select>
   <button onclick="entrar()">Entrar</button>
 </div>
 
-<div class="box" id="usuario" style="display:none">
+<div class="box" id="userBox" style="display:none">
   <h2>Usuário</h2>
-  <button onclick="pedir()">Pedir acesso</button>
-  <button onclick="rolar()" id="btnRolar" disabled>🎲 Rolar</button>
-  <p id="res"></p>
+  <button onclick="pedirAcesso()">Pedir acesso</button>
+  <button id="btnRolar" onclick="rolar()" disabled>🎲 Rolar</button>
+  <p id="resultado"></p>
 </div>
 
-<div class="box" id="dono" style="display:none">
+<div class="box" id="adminBox" style="display:none">
   <h2>Dono</h2>
+
   <h3>Pedidos</h3>
-  <div id="pedidos"></div>
+  <div id="listaPedidos"></div>
+
   <h3>Resultados</h3>
-  <div id="historico"></div>
+  <div id="listaResultados"></div>
 </div>
 
 <script>
 let usuarioAtual = "";
 
+/* LOGIN */
 function entrar(){
-  const nome = document.getElementById("nome").value;
-  const senha = document.getElementById("senha").value;
-  const tipo = document.getElementById("tipo").value;
+  const nome = inpNome.value.trim();
+  const senha = inpSenha.value.trim();
+  const tipo = inpTipo.value;
 
   if(!nome || !senha) return alert("Preencha tudo");
-  if(senha !== "RC1") return alert("Senha errada");
+  if(senha !== "RC1") return alert("Senha incorreta");
 
   usuarioAtual = nome;
-  login.style.display = "none";
+  loginBox.style.display = "none";
 
   if(tipo === "admin"){
-    dono.style.display = "block";
-    carregarPedidos();
-    carregarResultados();
+    adminBox.style.display = "block";
+    atualizarPedidos();
+    atualizarResultados();
   } else {
-    usuario.style.display = "block";
-    verificarAprovacao();
+    userBox.style.display = "block";
+    verificarPermissao();
   }
 }
 
-function pedir(){
-  let pedidos = JSON.parse(localStorage.getItem("pedidos")) || {};
-  pedidos[usuarioAtual] = false;
-  localStorage.setItem("pedidos", JSON.stringify(pedidos));
+/* USUÁRIO */
+function pedirAcesso(){
+  let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB")) || {};
+  pedidosDB[usuarioAtual] = false;
+  localStorage.setItem("pedidosDB", JSON.stringify(pedidosDB));
   alert("Pedido enviado ao dono");
 }
 
-function carregarPedidos(){
+function verificarPermissao(){
   setInterval(() => {
-    let pedidos = JSON.parse(localStorage.getItem("pedidos")) || {};
-    pedidosDiv = "";
-    for(let nome in pedidos){
-      if(pedidos[nome] === false){
-        pedidosDiv += `
-          <p>${nome}
-          <button onclick="aprovar('${nome}')">Aceitar</button>
-          <button onclick="recusar('${nome}')">Recusar</button></p>
-        `;
-      }
-    }
-    pedidos.innerHTML = pedidosDiv;
-  }, 1000);
-}
-
-function aprovar(nome){
-  let pedidos = JSON.parse(localStorage.getItem("pedidos"));
-  pedidos[nome] = true;
-  localStorage.setItem("pedidos", JSON.stringify(pedidos));
-}
-
-function recusar(nome){
-  let pedidos = JSON.parse(localStorage.getItem("pedidos"));
-  delete pedidos[nome];
-  localStorage.setItem("pedidos", JSON.stringify(pedidos));
-}
-
-function verificarAprovacao(){
-  setInterval(() => {
-    let pedidos = JSON.parse(localStorage.getItem("pedidos")) || {};
-    if(pedidos[usuarioAtual] === true){
+    let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB")) || {};
+    if(pedidosDB[usuarioAtual] === true){
       btnRolar.disabled = false;
     }
-  }, 1000);
+  }, 500);
 }
 
 function rolar(){
   const n = Math.floor(Math.random()*10)+1;
-  res.innerText = "Você tirou: " + n;
+  resultado.innerText = "Você tirou: " + n;
 
-  let hist = JSON.parse(localStorage.getItem("resultados")) || [];
-  hist.push({nome:usuarioAtual, numero:n});
-  localStorage.setItem("resultados", JSON.stringify(hist));
+  let resultadosDB = JSON.parse(localStorage.getItem("resultadosDB")) || [];
+  resultadosDB.push({nome:usuarioAtual, numero:n});
+  localStorage.setItem("resultadosDB", JSON.stringify(resultadosDB));
 }
 
-function carregarResultados(){
+/* DONO */
+function atualizarPedidos(){
   setInterval(() => {
-    let hist = JSON.parse(localStorage.getItem("resultados")) || [];
-    historico.innerHTML = hist.map(h=>`${h.nome} tirou ${h.numero}`).join("<br>");
-  }, 1000);
+    let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB")) || {};
+    let html = "";
+
+    for(let nome in pedidosDB){
+      if(pedidosDB[nome] === false){
+        html += `
+          <p>${nome}
+          <button onclick="aprovar('${nome}')">Aceitar</button>
+          <button onclick="recusar('${nome}')">Recusar</button>
+          </p>`;
+      }
+    }
+
+    document.getElementById("listaPedidos").innerHTML = html || "<i>Nenhum pedido</i>";
+  }, 500);
+}
+
+function aprovar(nome){
+  let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB"));
+  pedidosDB[nome] = true;
+  localStorage.setItem("pedidosDB", JSON.stringify(pedidosDB));
+}
+
+function recusar(nome){
+  let pedidosDB = JSON.parse(localStorage.getItem("pedidosDB"));
+  delete pedidosDB[nome];
+  localStorage.setItem("pedidosDB", JSON.stringify(pedidosDB));
+}
+
+function atualizarResultados(){
+  setInterval(() => {
+    let resultadosDB = JSON.parse(localStorage.getItem("resultadosDB")) || [];
+    let html = resultadosDB.map(r => `${r.nome} tirou ${r.numero}`).join("<br>");
+    document.getElementById("listaResultados").innerHTML = html || "<i>Sem resultados</i>";
+  }, 500);
 }
 </script>
 
